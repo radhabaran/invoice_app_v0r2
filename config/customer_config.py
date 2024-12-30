@@ -97,6 +97,13 @@ class CustomerConfig:
         "Bank Transfer", "Cheque", "Cash", "Credit Card"
     ])
 
+    # KYC Status Options
+    KYC_STATUS_OPTIONS: List[str] = field(default_factory=lambda: [
+        'Pending',
+        'Completed',
+        'Rejected'
+    ])
+
     # Declaration Text
     DECLARATION_TEXT: str = (
         "I Hereby confirm that the above information provided is true and authentic "
@@ -106,7 +113,7 @@ class CustomerConfig:
 
     # Required CSV Headers
     KYC_CSV_HEADERS: List[str] = field(default_factory=lambda: [
-        'kyc_id', 'customer_id', 'submission_date', 'status',
+        'customer_id', 'kyc_status',
         # Customer
         'residential_status', 'full_name', 
         'residential_address_line1', 'residential_address_line2',
