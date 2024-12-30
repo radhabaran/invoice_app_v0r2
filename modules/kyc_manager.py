@@ -7,11 +7,17 @@ import os
 import uuid
 from typing import Dict, Any, Optional, Tuple
 from config.customer_config import CustomerConfig
+from config.kyc_application_pdf_config import KYCApplicationPDFConfig
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+import csv
 
 class KYCManager:
     def __init__(self):
         self.config = CustomerConfig()
+        self.pdf_config = KYCApplicationPDFConfig()
         self.setup_data_store()
+        self.setup_pdf_directories()
         self.initialize_session_state()
 
 
@@ -38,6 +44,11 @@ class KYCManager:
             raise
 
 
+    def setup_pdf_directories(self):
+        """Create necessary directory for PDF storage"""
+        os.makedirs(self.pdf_config.KYC_APPLICATION_PDF_DIR, exist_ok=True)
+
+
     def initialize_session_state(self):
         """Initialize session state variables"""
         if 'kyc_search_results' not in st.session_state:
@@ -47,18 +58,33 @@ class KYCManager:
     def save_kyc_record(self, kyc_data: Dict[str, Any]) -> Tuple[bool, str]:
         """Save KYC record to CSV"""
         try:
+            # Check for duplicates if this is a new record
+            if 'customer_id' not in kyc_data:
+                is_duplicate, existing_record = self.check_duplicate(
+                    kyc_data['full_name'],
+                    kyc_data['date_of_birth'],
+                    kyc_data['passport_number']
+                )
+            
+                if is_duplicate:
+                    return False, f"Duplicate record found with Customer ID: {existing_record['customer_id']}"
+            
+                # Generate new customer ID
+                kyc_data['customer_id'] = self.generate_customer_id()
+                kyc_data['submission_date'] = datetime.now().strftime('%Y-%m-%d')
+                kyc_data['kyc_status'] = 'Pending'
+
             df = pd.read_csv(self.config.KYC_DATA_FILE)
             
-            if 'kyc_id' not in kyc_data:
-                kyc_data['kyc_id'] = str(uuid.uuid4())
-                kyc_data['submission_date'] = datetime.now().strftime('%Y-%m-%d')
-                kyc_data['status'] = 'Pending'
-                df = pd.concat([df, pd.DataFrame([kyc_data])], ignore_index=True)
+            if kyc_data.get('customer_id') in df['customer_id'].values:
+                # Update existing record
+                df.loc[df['customer_id'] == kyc_data['customer_id']] = kyc_data
             else:
-                df.loc[df['kyc_id'] == kyc_data['kyc_id']] = kyc_data
-            
+                # Add new record
+                df = pd.concat([df, pd.DataFrame([kyc_data])], ignore_index=True)
+        
             df.to_csv(self.config.KYC_DATA_FILE, index=False)
-            return True, "KYC record saved successfully"
+            return True, f"KYC record saved successfully with Customer ID: {kyc_data['customer_id']}"
         except Exception as e:
             return False, f"Error saving KYC record: {str(e)}"
 
@@ -81,7 +107,16 @@ class KYCManager:
         with st.form("kyc_form"):
             if customer_id:
                 st.text_input("Customer ID", value=customer_id, disabled=True)
-            
+
+                # Add KYC Status selector for existing records
+                kyc_status = st.selectbox(
+                    "KYC Status",
+                    self.config.KYC_STATUS_OPTIONS,
+                    index=self.config.KYC_STATUS_OPTIONS.index(existing_data.get('kyc_status', 'Pending'))
+                    
+                    if existing_data and existing_data.get('kyc_status') in self.config.KYC_STATUS_OPTIONS
+                    else 0
+                )
             # Customer Section
             st.subheader(self.config.KYC_FIELDS['customer']['title'])
             col1, col2 = st.columns(2)
@@ -291,6 +326,7 @@ class KYCManager:
 
                 kyc_data = {
                     'customer_id': customer_id,
+                    'kyc_status': kyc_status if customer_id else 'Pending',
                     # Customer
                     'residential_status': residential_status,
                     'full_name': full_name,
@@ -332,8 +368,6 @@ class KYCManager:
                 }
                 
                 if existing_data:
-                    kyc_data['kyc_id'] = existing_data['kyc_id']
-                    kyc_data['submission_date'] = existing_data['submission_date']
                     kyc_data['status'] = existing_data['status']
                 
                 success, message = self.save_kyc_record(kyc_data)
@@ -346,7 +380,28 @@ class KYCManager:
     def render_kyc_tab(self, customer_id: Optional[str] = None):
         """Render KYC tab content"""
         st.subheader("KYC Management")
-    
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.button("Add")
+        with col2:
+            st.button("Update")
+        with col3:
+            if st.button("Generate KYC Application"):
+                if customer_id:
+                    df = pd.read_csv(self.config.KYC_DATA_FILE)
+                    customer_data = df[df['customer_id'] == customer_id].to_dict('records')[0]
+                    success, message = self.generate_kyc_application(customer_data)
+                    if success:
+                        st.success(message)
+                    else:
+                        st.error(message)
+                else:
+                    st.error("Please select a customer first")
+        with col4:
+            st.button("Refresh")
+
         # Search section
         search_term = st.text_input("Search KYC Records", placeholder="Enter customer ID, name, or passport number")
     
@@ -358,3 +413,77 @@ class KYCManager:
     
         # Always render the KYC form, with customer_id if provided
         self.render_kyc_form(customer_id)
+
+
+    def generate_kyc_application(self, customer_data: Dict[str, Any]) -> Tuple[bool, str]:
+        """Generate KYC application PDF"""
+        try:
+            if customer_data.get('status').lower() != 'completed':
+                return False, "PDF generation is only allowed for completed KYC applications"
+
+            filename = f"kyc_application_{customer_data['customer_id']}.pdf"
+            filepath = os.path.join(self.pdf_config.KYC_APPLICATION_PDF_DIR, filename)
+            
+            # Create PDF
+            c = canvas.Canvas(filepath, pagesize=A4)
+            width, height = A4
+
+            # Header
+            c.setFont(self.pdf_config.HEADER_FONT, self.pdf_config.HEADER_SIZE)
+            c.drawString(self.pdf_config.PAGE_MARGIN, height - 50, self.pdf_config.PDF_TITLE)
+            
+            c.setFont(self.pdf_config.FIELD_FONT, self.pdf_config.FIELD_SIZE)
+            c.drawString(self.pdf_config.PAGE_MARGIN, height - 70, self.pdf_config.PDF_SUBTITLE)
+
+            y = height - 100
+
+            # Generate each section
+            for section in self.pdf_config.PDF_SECTIONS:
+                y = self._add_section(c, section, customer_data, y)
+                y -= self.pdf_config.SECTION_SPACING
+
+            c.save()
+            return True, f"PDF generated successfully: {filepath}"
+        
+        except Exception as e:
+            return False, f"Error generating PDF: {str(e)}"
+
+
+    def _add_section(self, canvas, section: str, data: Dict[str, Any], y: int) -> int:
+        """Add a section to the PDF and return new y position"""
+        # Section header
+        canvas.setFont(self.pdf_config.SECTION_FONT, self.pdf_config.SECTION_SIZE)
+        canvas.drawString(self.pdf_config.PAGE_MARGIN, y, section)
+        y -= 20
+
+        # Add fields for this section
+        canvas.setFont(self.pdf_config.FIELD_FONT, self.pdf_config.FIELD_SIZE)
+        if section in self.pdf_config.PDF_FIELDS:
+            for label, key in self.pdf_config.PDF_FIELDS[section]:
+                y -= self.pdf_config.FIELD_SPACING
+                value = data.get(key, '')
+                
+                # Format dates properly
+                if isinstance(value, str) and key.endswith(('_date', 'Date')):
+                    try:
+                        value = datetime.strptime(value, '%Y-%m-%d').strftime('%d-%m-%Y')
+                    except:
+                        pass
+                        
+                canvas.drawString(self.pdf_config.PAGE_MARGIN, y, f"{label}: {value}")
+
+        # Add declaration text if it's the declaration section
+        if section == 'Declaration':
+            y -= 30
+            canvas.setFont(self.pdf_config.FIELD_FONT, self.pdf_config.FIELD_SIZE)
+            canvas.drawString(self.pdf_config.PAGE_MARGIN, y, self.pdf_config.DECLARATION_TEXT)
+            
+            # Add signature fields
+            y -= 50
+            canvas.drawString(self.pdf_config.PAGE_MARGIN, y, f"Full Name of the Customer: {data['full_name']}")
+            canvas.drawString(self.pdf_config.PAGE_MARGIN, y-20, f"Signed as on Date: {datetime.now().strftime('%d-%m-%Y')}")
+            canvas.drawString(self.pdf_config.PAGE_MARGIN, y-40, "Signature: _____________________")
+            y -= 60
+
+        return y
+
