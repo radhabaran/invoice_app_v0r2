@@ -10,6 +10,7 @@ from modules.invoice_gen import InvoiceGenerator
 from modules.email_handler import EmailHandler
 from modules.workflow import WorkflowManager
 from modules.validator import DataValidator
+from modules.kyc_manager import KYCManager
 
 class WorkflowState(BaseModel):
     customer: Dict[str, Any]
@@ -45,6 +46,7 @@ class InvoiceApp:
                 }
             )
         
+        self.kyc_manager = KYCManager()
         self.workflow_manager = st.session_state.workflow_manager
         self.validator = DataValidator()
         self.state = st.session_state.state
@@ -185,8 +187,24 @@ class InvoiceApp:
 
     def render_main_page(self):
         """Render the main UI"""
-        st.title("Invoice Management System")
+        st.title("Invoice & KYC Management System")
 
+
+        # Create tabs for Invoice and KYC
+        tab1, tab2 = st.tabs(["Invoice Management", "KYC Management"])
+
+        with tab1:
+            # Your existing invoice management UI code
+            self.render_invoice_tab()
+        
+        with tab2:
+            # New KYC tab
+            self.kyc_manager.render_kyc_tab(
+                self.state.customer.get('cust_unique_id') if self.state.customer else None
+            )
+
+
+    def render_invoice_tab(self):
         # Main container with custom width
         with st.container():
             # Customer ID row
