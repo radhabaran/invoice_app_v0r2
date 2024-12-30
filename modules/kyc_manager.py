@@ -16,15 +16,26 @@ class KYCManager:
 
 
     def setup_data_store(self):
-        """Initialize data storage"""
-        if not os.path.exists(self.config.DATA_DIR):
-            os.makedirs(self.config.DATA_DIR)
+        """Initialize data storage and create files if they don't exist"""
+        try:
+            # Create data directory if it doesn't exist
+            os.makedirs(self.config.DATA_DIR, exist_ok=True)
+        
+            # Create KYC file with headers if it doesn't exist
+            if not os.path.exists(self.config.KYC_DATA_FILE):
+                # Create empty DataFrame with all required columns
+                df = pd.DataFrame(columns=self.config.KYC_CSV_HEADERS)
             
-        if not os.path.exists(self.config.KYC_DATA_FILE):
-            raise FileNotFoundError(
-                f"KYC data file not found at {self.config.KYC_DATA_FILE}. "
-                "Please ensure the required data file exists with proper headers."
-            )
+                # Create directory if it doesn't exist (in case KYC_DATA_FILE includes subdirectories)
+                os.makedirs(os.path.dirname(self.config.KYC_DATA_FILE), exist_ok=True)
+            
+                # Save empty DataFrame with headers
+                df.to_csv(self.config.KYC_DATA_FILE, index=False)
+                print(f"Created new KYC data file: {self.config.KYC_DATA_FILE}")
+       
+        except Exception as e:
+            st.error(f"Error setting up data store: {str(e)}")
+            raise
 
 
     def initialize_session_state(self):
@@ -334,8 +345,16 @@ class KYCManager:
 
     def render_kyc_tab(self, customer_id: Optional[str] = None):
         """Render KYC tab content"""
-        if customer_id:
-            st.subheader(f"KYC Application for Customer: {customer_id}")
-            self.render_kyc_form(customer_id)
-        else:
-            st.info("Please select a customer first")
+        st.subheader("KYC Management")
+    
+        # Search section
+        search_term = st.text_input("Search KYC Records", placeholder="Enter customer ID, name, or passport number")
+    
+        # Show search results if search term is entered
+        if search_term:
+            results = self.search_records(search_term)
+            if not results.empty:
+                st.dataframe(results)
+    
+        # Always render the KYC form, with customer_id if provided
+        self.render_kyc_form(customer_id)

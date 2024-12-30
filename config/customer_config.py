@@ -6,10 +6,13 @@ from typing import List, Dict
 
 @dataclass
 class CustomerConfig:
-    # Base paths
-    BASE_DIR: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    DATA_DIR: str = field(default=os.path.join(BASE_DIR, 'data'))
-    KYC_DATA_FILE: str = field(default=os.path.join(DATA_DIR, 'kyc_records.csv'))
+    # Define the path to data directory relative to project root
+    DATA_DIR = "data"
+    
+    # Define paths for different data files
+    KYC_DATA_FILE = "data/kyc_records.csv"
+    CUSTOMER_DATA_FILE = "data/customer_records.csv"
+    INVOICE_DATA_FILE = "data/invoice_records.csv"
 
     # KYC Form Structure
     KYC_FIELDS: Dict[str, Dict] = field(default_factory=lambda: {
@@ -120,14 +123,3 @@ class CustomerConfig:
         # Customer Profile and Payment
         'annual_income', 'investment_purpose', 'source_of_funds', 'payment_method'
     ])
-
-    def __post_init__(self):
-        """Validate paths after initialization"""
-        if not os.path.exists(self.DATA_DIR):
-            os.makedirs(self.DATA_DIR)
-
-        if not os.path.exists(self.KYC_DATA_FILE):
-            raise FileNotFoundError(
-                f"KYC data file not found at {self.KYC_DATA_FILE}. "
-                "Please ensure the required data file exists with proper headers."
-            )
