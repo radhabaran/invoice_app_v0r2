@@ -1,0 +1,5 @@
+cust_unique_id,cust_tax_id,cust_fname,cust_lname,cust_email,transaction_id,transaction_date,billed_amount,currency,payment_due_date,payment_status
+A00001,T00001,David,Langer,radhabaran.mohanty@gmail.com,7d7528aa-0ef8-4fa5-bb47-181ecc80fe04,2024-12-25,100.0,USD,2025-01-24,pending
+A00002,T00002,Jim,Dow,radhabaran.mohanty@gmail.com,a6ac3f4a-7596-4b34-b5f2-e7d735aafb1b,2024-12-25,20000.0,USD,2025-01-24,pending
+A00003,T00003,Tulsi,Gadda,radhabaran.mohanty@gmail.com,0409a6a9-b8c7-48c4-83f9-869efba779bb,2024-12-25,5000.0,USD,2025-01-24,pending
+A00002,T00002,Jim,Dow,radhabaran.mohanty@gmail.com,a6ac3f4a-7596-4b34-b5f2-e7d735aafb1b,2024-12-25,20000.0,USD,2025-01-24,pending
