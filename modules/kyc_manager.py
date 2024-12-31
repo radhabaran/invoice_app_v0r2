@@ -75,9 +75,9 @@ class KYCManager:
                 sequence = 1
             else:
                 # Extract sequence numbers and get max
-                sequences = current_year_records['customer_id'].str.extract(f'CUST{current_year}(\d+)')
+                sequences = current_year_records['customer_id'].str.extract(fr'CUST{current_year}(\d+)')  # Using raw string                sequence = sequences[0].astype(int).max() + 1
                 sequence = sequences[0].astype(int).max() + 1
-            
+
             return f"CUST{current_year}{sequence:03d}"
         except Exception as e:
             st.error(f"Error generating customer ID: {str(e)}")
@@ -430,25 +430,58 @@ class KYCManager:
 
     def render_kyc_tab(self, customer_id: Optional[str] = None):
         """Render KYC tab content"""
-        st.subheader("KYC Management")
-        
+        # Add CSS for consistent button styling
+        st.markdown("""
+            <style>
+            .stButton>button {
+                width: 100%;
+                background-color: #0083B8;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+            }
+            .stButton>button:hover {
+                background-color: #00669E;
+            }
+            .full-width {
+                width: 100%;
+            }
+            .info-box {
+                padding: 1rem;
+                background-color: #f8f9fa;
+                border-radius: 4px;
+                margin-bottom: 1rem;
+                width: 100%;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+
+        # Header with background
+        st.markdown("""
+            <div class="info-box">
+                <h3 style='margin:0'>KYC Management</h3>
+            </div>
+        """, unsafe_allow_html=True)
+    
         col1, col2, col3, col4 = st.columns(4)
-        
+    
         with col1:
-            if st.button("Add"):
+            if st.button("Add", key="add_btn"):
                 st.session_state.editing_customer = None
                 st.session_state.show_form = True
         with col2:
-            if st.button("Update"):
+            if st.button("Update", key="update_btn"):
                 if customer_id:
                     df = pd.read_csv(self.config.KYC_DATA_FILE)
                     customer_data = df[df['customer_id'] == customer_id].iloc[0].to_dict()
                     st.session_state.editing_customer = customer_data
                     st.session_state.show_form = True
-            else:
-                st.error("Please select a customer to update")
+                    st.success("Customer data loaded for update")
+                else:
+                    st.warning("⚠️ Please select a customer to update", icon="⚠️")
         with col3:
-            if st.button("Generate KYC Application"):
+            if st.button("Generate KYC", key="gen_btn"):
                 if customer_id:
                     df = pd.read_csv(self.config.KYC_DATA_FILE)
                     customer_data = df[df['customer_id'] == customer_id].to_dict('records')[0]
@@ -458,22 +491,36 @@ class KYCManager:
                     else:
                         st.error(message)
                 else:
-                    st.error("Please select a customer first")
+                    st.warning("⚠️ Please select a customer first", icon="⚠️")
         with col4:
-            if st.button("Refresh"):
+            if st.button("Refresh", key="refresh_btn"):
                 st.experimental_rerun()
 
-        # Search section
-        search_term = st.text_input("Search KYC Records", placeholder="Enter customer ID, name, or passport number")
+        # Only show search if not showing form
+        if not st.session_state.show_form:
+            # Search section with improved styling
+            st.markdown("<div class='info-box'>", unsafe_allow_html=True)
+            search_term = st.text_input(
+                "Search KYC Records",
+                placeholder="Enter customer ID, name, or passport number",
+                key="search_input"  # Added unique key
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+            # Show search results if search term is entered
+            if search_term:
+                results = self.search_records(search_term)
+                if not results.empty:
+                    st.markdown("<div class='info-box'>", unsafe_allow_html=True)
+                    st.dataframe(results, use_container_width=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
     
-        # Show search results if search term is entered
-        if search_term:
-            results = self.search_records(search_term)
-            if not results.empty:
-                st.dataframe(results)
-    
-        # Always render the KYC form, with customer_id if provided
-        self.render_kyc_form(customer_id)
+        # Show form if we're in add/edit mode
+        if st.session_state.show_form:
+            self.render_kyc_form(
+                customer_id=st.session_state.editing_customer.get('customer_id') if st.session_state.editing_customer else None,
+                existing_data=st.session_state.editing_customer
+            )
 
 
     def generate_kyc_application(self, customer_data: Dict[str, Any]) -> Tuple[bool, str]:
