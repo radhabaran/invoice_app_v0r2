@@ -53,6 +53,57 @@ class KYCManager:
         """Initialize session state variables"""
         if 'kyc_search_results' not in st.session_state:
             st.session_state.kyc_search_results = None
+        
+        if 'editing_customer' not in st.session_state:
+            st.session_state.editing_customer = None
+
+        if 'show_form' not in st.session_state:
+            st.session_state.show_form = False
+
+
+    def generate_customer_id(self) -> str:
+        """Generate sequential customer ID in format CUSTYEARXXX"""
+        try:
+            current_year = datetime.now().year
+            df = pd.read_csv(self.config.KYC_DATA_FILE)
+        
+            # Filter records for current year
+            year_mask = df['customer_id'].str.contains(str(current_year), na=False)
+            current_year_records = df[year_mask]
+        
+            if current_year_records.empty:
+                sequence = 1
+            else:
+                # Extract sequence numbers and get max
+                sequences = current_year_records['customer_id'].str.extract(f'CUST{current_year}(\d+)')
+                sequence = sequences[0].astype(int).max() + 1
+            
+            return f"CUST{current_year}{sequence:03d}"
+        except Exception as e:
+            st.error(f"Error generating customer ID: {str(e)}")
+            return ""
+
+
+    def check_duplicate(self, full_name: str, date_of_birth: str, passport_number: str) -> Tuple[bool, Optional[Dict]]:
+        """Check for duplicate records based on name, DOB and passport"""
+        try:
+            df = pd.read_csv(self.config.KYC_DATA_FILE)
+        
+            # Case-insensitive comparison
+            mask = (
+                df['full_name'].str.lower() == full_name.lower() &
+                df['date_of_birth'] == date_of_birth &
+                df['passport_number'].str.lower() == passport_number.lower()
+            )
+        
+            matches = df[mask]
+            if not matches.empty:
+                return True, matches.iloc[0].to_dict()
+            return False, None
+        
+        except Exception as e:
+            st.error(f"Error checking duplicates: {str(e)}")
+            return False, None
 
 
     def save_kyc_record(self, kyc_data: Dict[str, Any]) -> Tuple[bool, str]:
@@ -368,7 +419,7 @@ class KYCManager:
                 }
                 
                 if existing_data:
-                    kyc_data['status'] = existing_data['status']
+                    kyc_data['kyc_status'] = existing_data['kyc_status']
                 
                 success, message = self.save_kyc_record(kyc_data)
                 if success:
@@ -384,9 +435,18 @@ class KYCManager:
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.button("Add")
+            if st.button("Add"):
+                st.session_state.editing_customer = None
+                st.session_state.show_form = True
         with col2:
-            st.button("Update")
+            if st.button("Update"):
+                if customer_id:
+                    df = pd.read_csv(self.config.KYC_DATA_FILE)
+                    customer_data = df[df['customer_id'] == customer_id].iloc[0].to_dict()
+                    st.session_state.editing_customer = customer_data
+                    st.session_state.show_form = True
+            else:
+                st.error("Please select a customer to update")
         with col3:
             if st.button("Generate KYC Application"):
                 if customer_id:
@@ -400,7 +460,8 @@ class KYCManager:
                 else:
                     st.error("Please select a customer first")
         with col4:
-            st.button("Refresh")
+            if st.button("Refresh"):
+                st.experimental_rerun()
 
         # Search section
         search_term = st.text_input("Search KYC Records", placeholder="Enter customer ID, name, or passport number")
@@ -418,7 +479,7 @@ class KYCManager:
     def generate_kyc_application(self, customer_data: Dict[str, Any]) -> Tuple[bool, str]:
         """Generate KYC application PDF"""
         try:
-            if customer_data.get('status').lower() != 'completed':
+            if customer_data.get('kyc_status').lower() != 'completed':
                 return False, "PDF generation is only allowed for completed KYC applications"
 
             filename = f"kyc_application_{customer_data['customer_id']}.pdf"
