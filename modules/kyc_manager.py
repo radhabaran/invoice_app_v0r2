@@ -120,10 +120,11 @@ class KYCManager:
                 if is_duplicate:
                     return False, f"Duplicate record found with Customer ID: {existing_record['customer_id']}"
             
-                # Generate new customer ID
-                kyc_data['customer_id'] = self.generate_customer_id()
-                kyc_data['submission_date'] = datetime.now().strftime('%Y-%m-%d')
-                kyc_data['kyc_status'] = 'Pending'
+            # Generate new customer ID
+            kyc_data['customer_id'] = self.generate_customer_id()
+            print("\n\nDebugging: customer_id :", kyc_data['customer_id'])
+            # kyc_data['submission_date'] = datetime.now().strftime('%Y-%m-%d')
+            kyc_data['kyc_status'] = 'Pending'
 
             df = pd.read_csv(self.config.KYC_DATA_FILE)
             
@@ -134,6 +135,7 @@ class KYCManager:
                 # Add new record
                 df = pd.concat([df, pd.DataFrame([kyc_data])], ignore_index=True)
         
+            print("\n\nDebugging: df :", df.head())
             df.to_csv(self.config.KYC_DATA_FILE, index=False)
             return True, f"KYC record saved successfully with Customer ID: {kyc_data['customer_id']}"
         except Exception as e:
@@ -424,6 +426,10 @@ class KYCManager:
                 success, message = self.save_kyc_record(kyc_data)
                 if success:
                     st.success(message)
+                    # Reset form state after successful submission
+                    st.session_state.show_form = False
+                    st.session_state.editing_customer = None
+                    st.rerun()  # This will refresh the page and show the search view
                 else:
                     st.error(message)
 
@@ -467,7 +473,9 @@ class KYCManager:
         col1, col2, col3, col4 = st.columns(4)
     
         with col1:
-            if st.button("Add", key="add_btn"):
+            # Disable Add button when form is shown
+            add_disabled = st.session_state.show_form
+            if st.button("Add", key="add_btn", disabled=add_disabled):
                 st.session_state.editing_customer = None
                 st.session_state.show_form = True
         with col2:
@@ -493,8 +501,10 @@ class KYCManager:
                 else:
                     st.warning("⚠️ Please select a customer first", icon="⚠️")
         with col4:
-            if st.button("Refresh", key="refresh_btn"):
-                st.experimental_rerun()
+            if st.button("Refresh", key="refresh_btn"):     # Changed from Refresh to Reset
+                st.session_state.show_form = False
+                st.session_state.editing_customer = None
+                st.rerun()  # Changed from experimental_rerun to rerun
 
         # Only show search if not showing form
         if not st.session_state.show_form:
