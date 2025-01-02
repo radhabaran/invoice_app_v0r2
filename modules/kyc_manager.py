@@ -55,7 +55,7 @@ class KYCManager:
                 print(f"Created new KYC data file: {self.config.KYC_DATA_FILE}")
        
         except Exception as e:
-            st.error(f"Error setting up data store: {str(e)}")
+            st.session_state.message = ("error", f"Error setting up data store: {str(e)}")
             raise
 
 
@@ -71,7 +71,7 @@ class KYCManager:
         except FileNotFoundError:
             return pd.DataFrame(columns=self.config.KYC_CSV_HEADERS).astype(self.get_data_types())
         except Exception as e:
-            logging.error(f"Error reading KYC data: {str(e)}")
+            st.session_state.message = ("error", f"Error reading KYC data: {str(e)}")
             raise
 
 
@@ -97,13 +97,16 @@ class KYCManager:
         if 'is_update_mode' not in st.session_state: 
             st.session_state.is_update_mode = False
 
+        # Add message state initialization
+        if 'message' not in st.session_state:
+            st.session_state.message = None
+
 
     def generate_customer_id(self) -> str:
         """Generate sequential customer ID in format CUSTYEARXXX"""
         try:
             current_year = datetime.now().year
-            print(f"Processing for year: {current_year}")
-
+    
             # Read the CSV file
             df = self.read_kyc_data()
         
@@ -134,7 +137,7 @@ class KYCManager:
 
         except Exception as e:
             print(f"Error in generate_customer_id: {str(e)}")
-            st.error(f"Error generating customer ID: {str(e)}")
+            st.session_state.message = ("error", f"Error generating customer ID: {str(e)}")
             return ""
 
 
@@ -156,7 +159,7 @@ class KYCManager:
             return False, None
         
         except Exception as e:
-            st.error(f"Error checking duplicates: {str(e)}")
+            st.session_state.message = ("error", f"Error checking duplicates: {str(e)}")
             return False, None
 
 
@@ -166,28 +169,17 @@ class KYCManager:
             # Read with proper types
             df = self.read_kyc_data()
 
-            print("\n\nDebugging1. Current DataFrame Info:")
-            print(df.info())  # This will show data types and non-null counts
-        
-            print("\n\nDebugging2. Form Data Being Saved:")
-            for key, value in kyc_data.items():
-                print(f"{key}: {type(value)} = {value}")
-
             # Update existing record
             if st.session_state.is_update_mode and kyc_data.get('customer_id'):
                 print(f"Updating record: {kyc_data['customer_id']}")
                 mask = df['customer_id'] == kyc_data['customer_id']
                 if df[mask].empty:
                     return False, f"Error: Customer ID {kyc_data['customer_id']} not found"
-            
-                # Update the existing record
-                print("\n\nDebugging: in save_kyc_record: Update Record : kyc_data : ", kyc_data)
 
                 # Update each field individually
                 for column in df.columns:
                     if column in kyc_data:
                         df.loc[mask, column] = kyc_data[column]
-                print("\n\nDebugging: in save_kyc_record: Update Record : df.loc[mask] : ", df.loc[mask])
                 
                 df.to_csv(self.config.KYC_DATA_FILE, index=False)
                 return True, f"Customer record updated successfully: {kyc_data['customer_id']}"
@@ -207,10 +199,8 @@ class KYCManager:
             
                 # Generate new customer ID
                 cust_id = self.generate_customer_id()
-                print("\n\nDebugging: in save_kyc_record: customer_id : ", cust_id)
 
                 kyc_data['customer_id'] = cust_id
-                print("\n\nDebugging: in save_kyc_record: customer_id : ", kyc_data['customer_id'])
                 kyc_data['kyc_status'] = 'Pending'
                 
                 # Add new record
@@ -228,15 +218,13 @@ class KYCManager:
         """Search KYC records"""
         try:
             df = self.read_kyc_data()
-            print("\n\nDebugging3. Search DataFrame Info:")
-            print("\n\nDebugging4:", df.info())
 
             if search_term:
                 mask = df.apply(lambda x: x.astype(str).str.contains(search_term, case=False)).any(axis=1)
                 return df[mask]
             return df
         except Exception as e:
-            st.error(f"Search error: {str(e)}")
+            st.session_state.message = ("error", f"Search error: {str(e)}")
             return pd.DataFrame(columns=self.config.KYC_CSV_HEADERS).astype(self.get_data_types())
 
 
@@ -452,7 +440,7 @@ class KYCManager:
             
             if submitted:
                 if not declaration_accepted:
-                    st.error("Please accept the declaration to proceed")
+                    st.session_state.message = ("error", "Please accept the declaration to proceed")
                     return
 
                 kyc_data = {
@@ -507,7 +495,7 @@ class KYCManager:
                 print("\n\nDebugging: in kyc_manager: kyc_data : ", kyc_data)
                 success, message = self.save_kyc_record(kyc_data)
                 if success:
-                    st.success(message)
+                    st.session_state.message = ("success", message)
                     # Reset form state after successful submission
                     st.session_state.show_form = False
                     st.session_state.editing_customer = None
@@ -515,7 +503,7 @@ class KYCManager:
                     st.session_state.selected_customer_id = None
                     st.rerun()
                 else:
-                    st.error(message)
+                    st.session_state.message = ("error", message)
 
 
     def render_kyc_tab(self, customer_id: Optional[str] = None):
@@ -573,21 +561,21 @@ class KYCManager:
                             st.session_state.editing_customer = customer_data
                             st.session_state.show_form = True
                             st.session_state.is_update_mode = True  # Set update mode
-                            st.success(f"Customer {st.session_state.selected_customer_id} loaded for update")
+                            st.session_state.message = ("success", f"Customer {st.session_state.selected_customer_id} loaded for update")
                         else:
-                            st.error("Customer record not found")
+                            st.session_state.message = ("error", "Customer record not found")
                     except Exception as e:
-                        st.error(f"Error loading customer data: {str(e)}")
+                        st.session_state.message = ("error", f"Error loading customer data: {str(e)}")
                 else:
-                    st.warning("⚠️ Please select a customer record to update")
+                    st.session_state.message = ("warning", "⚠️ Please select a customer record to update")
 
         with col3:
-            if st.button("Generate KYC", key="gen_btn"):
+            if st.button("Generate KYC FORM", key="gen_btn"):
                 if st.session_state.selected_customer_id:
                     df = self.read_kyc_data()
                     customer_data = df[df['customer_id'] == st.session_state.selected_customer_id].iloc[0].to_dict()
-                    if customer_data['kyc_status'].lower() != 'completed':
-                        st.error("KYC generation is only allowed for completed applications")
+                    if customer_data['kyc_status'].lower() != 'pending':
+                        st.session_state.message = ("error", "KYC FORM generation is only allowed for completed applications")
                     else:
                         success, message = self.generate_kyc_application(customer_data)
                         if success:
@@ -595,13 +583,26 @@ class KYCManager:
                         else:
                             st.error(message)
                 else:
-                    st.warning("⚠️ Please select a customer record to generate KYC")
+                    st.session_state.message = ("warning", "⚠️ Please select a customer record to generate KYC")
         with col4:
-            if st.button("Reset", key="reset_btn"):     # Changed from Refresh to Reset
+            if st.button("Reset", key="reset_btn"):    
                 st.session_state.show_form = False
                 st.session_state.editing_customer = None
                 st.session_state.selected_customer_id = None
+                st.session_state.message = None  # Clear any existing messages
                 st.rerun()  # Changed from experimental_rerun to rerun
+
+            # Message display area - right below the buttons
+        if 'message' in st.session_state and st.session_state.message:
+            msg_type, msg_text = st.session_state.message
+            if msg_type == "success":
+                st.success(msg_text)
+            elif msg_type == "error":
+                st.error(msg_text)
+            elif msg_type == "warning":
+                st.warning(msg_text)
+            # Clear message after displaying
+            st.session_state.message = None
 
         # Only show search if not showing form
         if not st.session_state.show_form:
@@ -646,72 +647,201 @@ class KYCManager:
     def generate_kyc_application(self, customer_data: Dict[str, Any]) -> Tuple[bool, str]:
         """Generate KYC application PDF"""
         try:
-            if customer_data.get('kyc_status').lower() != 'completed':
-                return False, "PDF generation is only allowed for completed KYC applications"
-
             filename = f"kyc_application_{customer_data['customer_id']}.pdf"
             filepath = os.path.join(self.pdf_config.KYC_APPLICATION_PDF_DIR, filename)
-            
-            # Create PDF
+        
             c = canvas.Canvas(filepath, pagesize=A4)
             width, height = A4
 
-            # Header
-            c.setFont(self.pdf_config.HEADER_FONT, self.pdf_config.HEADER_SIZE)
-            c.drawString(self.pdf_config.PAGE_MARGIN, height - 50, self.pdf_config.PDF_TITLE)
+            # Main border
+            c.rect(40, height-750, 515, 690)  # Adjust height as needed
             
-            c.setFont(self.pdf_config.FIELD_FONT, self.pdf_config.FIELD_SIZE)
-            c.drawString(self.pdf_config.PAGE_MARGIN, height - 70, self.pdf_config.PDF_SUBTITLE)
+            # Title section border
+            c.rect(40, height-60, 515, 50)
+            
+            # Title in red
+            c.setFillColorRGB(1, 0, 0)
+            c.setFont('Helvetica-Bold', 14)
+            c.drawCentredString(width/2, height-30, "KYC APPLICATION")
+            
+            # Subtitle with proper spacing
+            subtitle = "(To be Filled by Each Purchaser Separately)"
+            c.setFont('Helvetica', 11)  # Reduced font size
+            text_width = c.stringWidth(subtitle, 'Helvetica', 11)
+            c.setFillColorRGB(1, 1, 0)  # Yellow background
+            c.rect((width-text_width)/2 - 2, height-50, text_width + 4, 16, fill=1)
+            c.setFillColorRGB(1, 0, 0)  # Red text
+            c.drawCentredString(width/2, height-45, subtitle)
 
-            y = height - 100
+            y = height - 60
+            c.setFillColorRGB(0, 0, 0)
 
-            # Generate each section
+            # Generate sections
             for section in self.pdf_config.PDF_SECTIONS:
-                y = self._add_section(c, section, customer_data, y)
-                y -= self.pdf_config.SECTION_SPACING
+                if section == "Customer Information":
+                    y = self._add_two_column_section(c, section, customer_data, y)
+                elif section == "Declaration":
+                    y = self._add_declaration(c, customer_data, y)
+                else:
+                    y = self._add_section(c, section, customer_data, y)
 
             c.save()
             return True, f"PDF generated successfully: {filepath}"
-        
+    
         except Exception as e:
             return False, f"Error generating PDF: {str(e)}"
 
 
     def _add_section(self, canvas, section: str, data: Dict[str, Any], y: int) -> int:
-        """Add a section to the PDF and return new y position"""
-        # Section header
-        canvas.setFont(self.pdf_config.SECTION_FONT, self.pdf_config.SECTION_SIZE)
-        canvas.drawString(self.pdf_config.PAGE_MARGIN, y, section)
+        """Add a regular section with single column layout"""
+        # Section header with grid
+        canvas.rect(40, y-20, 515, 20)  # Grid for header
+        if section == "CUSTOMER INFORMATION":
+            canvas.setFillColorRGB(0, 0, 0)
+        else:
+            canvas.setFillColorRGB(0.9, 0.95, 1.0)
+            canvas.rect(40, y-20, 515, 20, fill=1)
+            canvas.setFillColorRGB(1, 0, 0)
+    
+        canvas.setFont('Helvetica-Bold', 11)
+        canvas.drawCentredString(297, y-15, section)
+        canvas.setFillColorRGB(0, 0, 0)
+        
         y -= 20
+        canvas.setFont('Helvetica', 10)
+    
+        # Draw fields with continuous grid
+        for label, key in self.pdf_config.PDF_FIELDS.get(section, []):
+            canvas.rect(40, y-20, 210, 20)  # Label box
+            canvas.rect(250, y-20, 305, 20)  # Value box
+            
+            canvas.drawString(45, y-15, label)
+            value = str(data.get(key, ''))
+            if isinstance(value, str) and key.endswith(('_date', 'Date')):
+                try:
+                    value = datetime.strptime(value, '%Y-%m-%d').strftime('%d-%m-%Y')
+                except:
+                    pass
+            if not pd.isna(value) and value.lower() != 'nan':
+                canvas.drawString(255, y-15, value)
+            y -= 20
+        
+        return y
 
-        # Add fields for this section
-        canvas.setFont(self.pdf_config.FIELD_FONT, self.pdf_config.FIELD_SIZE)
-        if section in self.pdf_config.PDF_FIELDS:
-            for label, key in self.pdf_config.PDF_FIELDS[section]:
-                y -= self.pdf_config.FIELD_SPACING
-                value = data.get(key, '')
-                
-                # Format dates properly
-                if isinstance(value, str) and key.endswith(('_date', 'Date')):
+
+    def _add_two_column_section(self, canvas, section: str, data: Dict[str, Any], y: int) -> int:
+        """Add Customer Information section with two-column layout"""
+        # Section header
+        canvas.setFillColorRGB(0.9, 0.95, 1.0)
+        canvas.rect(40, y-20, 515, 20, fill=1)
+        canvas.setFillColorRGB(1, 0, 0)
+        canvas.setFont('Helvetica-Bold', 12)
+        canvas.drawCentredString(297, y-15, section)
+        
+        y -= 25
+        canvas.setFont('Helvetica', 10)
+        canvas.setFillColorRGB(0, 0, 0)
+    
+        # Two-column layout
+        fields = self.pdf_config.PDF_FIELDS.get(section, [])
+        mid_point = 297
+    
+        for i in range(0, len(fields), 2):
+            # Vertical lines
+            canvas.line(mid_point, y, mid_point, y-20)  # Middle divider
+            canvas.line(145, y, 145, y-20)      # Left column divider
+            canvas.line(402, y, 402, y-20)      # Right column divider
+            
+            # Horizontal line
+            canvas.line(40, y-20, 555, y-20)
+            
+            # Left column
+            canvas.drawString(45, y-15, fields[i][0])
+            value = str(data.get(fields[i][1], ''))
+            if isinstance(value, str) and fields[i][1].endswith(('_date', 'Date')):
+                try:
+                    value = datetime.strptime(value, '%Y-%m-%d').strftime('%d-%m-%Y')
+                except:
+                    pass
+            if not pd.isna(value) and value.lower() != 'nan':
+                canvas.drawString(150, y-15, value)
+            
+            # Right column
+            if i+1 < len(fields):
+                canvas.drawString(302, y-15, fields[i+1][0])
+                value = str(data.get(fields[i+1][1], ''))
+                if isinstance(value, str) and fields[i+1][1].endswith(('_date', 'Date')):
                     try:
                         value = datetime.strptime(value, '%Y-%m-%d').strftime('%d-%m-%Y')
                     except:
                         pass
-                        
-                canvas.drawString(self.pdf_config.PAGE_MARGIN, y, f"{label}: {value}")
-
-        # Add declaration text if it's the declaration section
-        if section == 'Declaration':
-            y -= 30
-            canvas.setFont(self.pdf_config.FIELD_FONT, self.pdf_config.FIELD_SIZE)
-            canvas.drawString(self.pdf_config.PAGE_MARGIN, y, self.pdf_config.DECLARATION_TEXT)
+                if not pd.isna(value) and value.lower() != 'nan':
+                    canvas.drawString(407, y-15, value)
             
-            # Add signature fields
-            y -= 50
-            canvas.drawString(self.pdf_config.PAGE_MARGIN, y, f"Full Name of the Customer: {data['full_name']}")
-            canvas.drawString(self.pdf_config.PAGE_MARGIN, y-20, f"Signed as on Date: {datetime.now().strftime('%d-%m-%Y')}")
-            canvas.drawString(self.pdf_config.PAGE_MARGIN, y-40, "Signature: _____________________")
-            y -= 60
-
+            y -= 20
+    
         return y
 
+
+    def _add_declaration(self, canvas, data: Dict[str, Any], y: int) -> int:
+        """Add declaration section with proper formatting"""
+        # Section header
+        canvas.rect(40, y-20, 515, 20)
+        canvas.setFillColorRGB(0.9, 0.95, 1.0)
+        canvas.rect(40, y-20, 515, 20, fill=1)
+        canvas.setFillColorRGB(1, 0, 0)
+        canvas.setFont('Helvetica-Bold', 11)
+        canvas.drawCentredString(297, y-15, "Declaration")
+        
+        y -= 20
+        canvas.setFillColorRGB(0, 0, 0)
+        canvas.setFont('Helvetica', 10)
+        
+        # Declaration text box with word wrapping
+        declaration_text = self.pdf_config.DECLARATION_TEXT
+        words = declaration_text.split()
+        lines = []
+        current_line = []
+        line_width = 0
+        max_width = 500  # Maximum width for text
+
+        for word in words:
+            word_width = canvas.stringWidth(word + " ", 'Helvetica', 10)
+            if line_width + word_width <= max_width:
+                current_line.append(word)
+                line_width += word_width
+            else:
+                lines.append(' '.join(current_line))
+                current_line = [word]
+                line_width = word_width
+        
+        if current_line:
+            lines.append(' '.join(current_line))
+
+        # Calculate text box height
+        text_height = len(lines) * 15 + 10  # 15 points per line + padding
+        canvas.rect(40, y-text_height, 515, text_height)
+        
+        # Draw text lines
+        text_y = y - 15
+        for line in lines:
+            canvas.drawString(45, text_y, line)
+            text_y -= 15
+        
+        y -= text_height
+        
+        # Signature fields
+        signature_fields = [
+            ("Full Name of the Customer", data.get('full_name', '')),
+            ("Signed as on Date", datetime.now().strftime('%d-%m-%Y')),
+            ("Signature", "_____________________")
+        ]
+        
+        for label, value in signature_fields:
+            canvas.rect(40, y-20, 210, 20)  # Label box
+            canvas.rect(250, y-20, 305, 20)  # Value box
+            canvas.drawString(45, y-15, label)
+            canvas.drawString(255, y-15, value)
+            y -= 20
+        
+        return y
