@@ -153,7 +153,15 @@ class KYCManager:
                     return False, f"Error: Customer ID {kyc_data['customer_id']} not found"
             
                 # Update the existing record
-                df.loc[mask] = kyc_data
+                print("\n\nDebugging: in save_kyc_record: Update Record : kyc_data : ", kyc_data)
+
+                # df.loc[mask] = kyc_data
+                # OR update column by column
+                for column in df.columns:
+                    if column in kyc_data:
+                        df.loc[mask, column] = kyc_data[column]
+                print("\n\nDebugging: in save_kyc_record: Update Record : df.loc[mask] : ", df.loc[mask])
+                
                 df.to_csv(self.config.KYC_DATA_FILE, index=False)
                 return True, f"Customer record updated successfully: {kyc_data['customer_id']}"
             
