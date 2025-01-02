@@ -21,6 +21,16 @@ class KYCManager:
         self.initialize_session_state()
 
 
+    # Helper function to safely parse dates
+    def parse_date(self, date_str):
+        if pd.isna(date_str) or date_str is None:
+            return None
+        try:
+            return datetime.strptime(str(date_str), '%Y-%m-%d').date()
+        except:
+            return None
+
+
     def setup_data_store(self):
         """Initialize data storage and create files if they don't exist"""
         try:
@@ -71,21 +81,38 @@ class KYCManager:
         """Generate sequential customer ID in format CUSTYEARXXX"""
         try:
             current_year = datetime.now().year
+            print(f"Processing for year: {current_year}")
+
+            # Read the CSV file
             df = pd.read_csv(self.config.KYC_DATA_FILE)
         
-            # Filter records for current year
-            year_mask = df['customer_id'].str.contains(str(current_year), na=False)
-            current_year_records = df[year_mask]
-        
-            if current_year_records.empty:
-                sequence = 1
-            else:
-                # Extract sequence numbers and get max
-                sequences = current_year_records['customer_id'].str.extract(fr'CUST{current_year}(\d+)')  # Using raw string   
-                sequence = sequences[0].astype(int).max() + 1
+            # If file is empty, return first ID
+            if df.empty:
+                return f"CUST{current_year}001"
 
-            return f"CUST{current_year}{sequence:03d}"
+            # Get all IDs for current year
+            current_year_pattern = f"CUST{current_year}"
+            current_year_ids = df[df['customer_id'].str.startswith(current_year_pattern, na=False)]
+
+            # If no IDs for current year, return first ID
+            if current_year_ids.empty:
+                return f"CUST{current_year}001"
+
+            # Get the last ID and increment
+            last_id = current_year_ids['customer_id'].max()
+            print(f"Last ID found: {last_id}")
+        
+            # Extract sequence number
+            sequence = int(last_id[-3:]) + 1
+        
+            # Generate new ID
+            new_id = f"CUST{current_year}{sequence:03d}"
+            print(f"Generated new ID: {new_id}")
+        
+            return new_id
+
         except Exception as e:
+            print(f"Error in generate_customer_id: {str(e)}")
             st.error(f"Error generating customer ID: {str(e)}")
             return ""
 
@@ -144,7 +171,11 @@ class KYCManager:
                     return False, f"Duplicate record found with Customer ID: {existing_record['customer_id']}"
             
                 # Generate new customer ID
-                kyc_data['customer_id'] = self.generate_customer_id()
+                cust_id = self.generate_customer_id()
+                print("\n\nDebugging: in save_kyc_record: customer_id : ", cust_id)
+
+                kyc_data['customer_id'] = cust_id
+                print("\n\nDebugging: in save_kyc_record: customer_id : ", kyc_data['customer_id'])
                 kyc_data['kyc_status'] = 'Pending'
                 
                 # Add new record
@@ -248,8 +279,7 @@ class KYCManager:
                 )
                 date_of_birth = st.date_input(
                     "Date of Birth*",
-                    value=datetime.strptime(existing_data.get('date_of_birth'), '%Y-%m-%d').date()
-                    if existing_data and existing_data.get('date_of_birth') else None
+                    value=self.parse_date(existing_data.get('date_of_birth')) if existing_data else None
                 )
                 place_of_birth = st.text_input(
                     "Place of Birth*",
@@ -266,13 +296,11 @@ class KYCManager:
                 )
                 passport_issue_date = st.date_input(
                     "Passport Issue Date*",
-                    value=datetime.strptime(existing_data.get('passport_issue_date'), '%Y-%m-%d').date()
-                    if existing_data and existing_data.get('passport_issue_date') else None
+                    value=self.parse_date(existing_data.get('passport_issue_date')) if existing_data else None
                 )
                 passport_expiry_date = st.date_input(
                     "Passport Expiry Date*",
-                    value=datetime.strptime(existing_data.get('passport_expiry_date'), '%Y-%m-%d').date()
-                    if existing_data and existing_data.get('passport_expiry_date') else None
+                    value=self.parse_date(existing_data.get('passport_expiry_date')) if existing_data else None
                 )
 
             # Additional Passport Information
@@ -290,13 +318,11 @@ class KYCManager:
             with col2:
                 dual_passport_issue_date = st.date_input(
                     "Dual Passport Issue Date",
-                    value=datetime.strptime(existing_data.get('dual_passport_issue_date'), '%Y-%m-%d').date()
-                    if existing_data and existing_data.get('dual_passport_issue_date') else None
+                    value=self.parse_date(existing_data.get('dual_passport_issue_date')) if existing_data else None
                 )
                 dual_passport_expiry_date = st.date_input(
                     "Dual Passport Expiry Date",
-                    value=datetime.strptime(existing_data.get('dual_passport_expiry_date'), '%Y-%m-%d').date()
-                    if existing_data and existing_data.get('dual_passport_expiry_date') else None
+                    value=self.parse_date(existing_data.get('dual_passport_expiry_date')) if existing_data else None
                 )
 
             # UAE Specific Information
@@ -309,8 +335,7 @@ class KYCManager:
                 )
                 emirates_id_expiry = st.date_input(
                     "Emirates ID Expiry Date*",
-                    value=datetime.strptime(existing_data.get('emirates_id_expiry'), '%Y-%m-%d').date()
-                    if existing_data and existing_data.get('emirates_id_expiry') else None
+                    value=self.parse_date(existing_data.get('emirates_id_expiry')) if existing_data else None
                 )
             with col2:
                 visa_uid = st.text_input(
@@ -319,8 +344,7 @@ class KYCManager:
                 )
                 visa_expiry = st.date_input(
                     "Visa Expiry Date*",
-                    value=datetime.strptime(existing_data.get('visa_expiry'), '%Y-%m-%d').date()
-                    if existing_data and existing_data.get('visa_expiry') else None
+                    value=self.parse_date(existing_data.get('visa_expiry')) if existing_data else None
                 )
 
             # Customer Occupation Section
@@ -442,6 +466,7 @@ class KYCManager:
                     kyc_data['customer_id'] = customer_id  # Ensure customer_id is set for update
                     kyc_data['kyc_status'] = kyc_status    # Preserve the selected status
                 
+                print("\n\nDebugging: in kyc_manager: kyc_data : ", kyc_data)
                 success, message = self.save_kyc_record(kyc_data)
                 if success:
                     st.success(message)
