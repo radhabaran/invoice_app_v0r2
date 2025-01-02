@@ -60,6 +60,12 @@ class KYCManager:
         if 'show_form' not in st.session_state:
             st.session_state.show_form = False
 
+        if 'selected_customer_id' not in st.session_state:
+            st.session_state.selected_customer_id = None
+
+        if 'is_update_mode' not in st.session_state: 
+            st.session_state.is_update_mode = False
+
 
     def generate_customer_id(self) -> str:
         """Generate sequential customer ID in format CUSTYEARXXX"""
@@ -75,7 +81,7 @@ class KYCManager:
                 sequence = 1
             else:
                 # Extract sequence numbers and get max
-                sequences = current_year_records['customer_id'].str.extract(fr'CUST{current_year}(\d+)')  # Using raw string                sequence = sequences[0].astype(int).max() + 1
+                sequences = current_year_records['customer_id'].str.extract(fr'CUST{current_year}(\d+)')  # Using raw string   
                 sequence = sequences[0].astype(int).max() + 1
 
             return f"CUST{current_year}{sequence:03d}"
@@ -110,7 +116,24 @@ class KYCManager:
         """Save KYC record to CSV"""
         try:
             # Check for duplicates if this is a new record
-            if 'customer_id' not in kyc_data:
+            df = pd.read_csv(self.config.KYC_DATA_FILE)
+
+            # Update existing record
+            if st.session_state.is_update_mode and kyc_data.get('customer_id'):
+                print(f"Updating record: {kyc_data['customer_id']}")
+                mask = df['customer_id'] == kyc_data['customer_id']
+                if df[mask].empty:
+                    return False, f"Error: Customer ID {kyc_data['customer_id']} not found"
+            
+                # Update the existing record
+                df.loc[mask] = kyc_data
+                df.to_csv(self.config.KYC_DATA_FILE, index=False)
+                return True, f"Customer record updated successfully: {kyc_data['customer_id']}"
+            
+            # New Record
+            else:
+                print("Creating new record")
+                # Check for duplicates
                 is_duplicate, existing_record = self.check_duplicate(
                     kyc_data['full_name'],
                     kyc_data['date_of_birth'],
@@ -120,25 +143,18 @@ class KYCManager:
                 if is_duplicate:
                     return False, f"Duplicate record found with Customer ID: {existing_record['customer_id']}"
             
-            # Generate new customer ID
-            kyc_data['customer_id'] = self.generate_customer_id()
-            print("\n\nDebugging: customer_id :", kyc_data['customer_id'])
-            # kyc_data['submission_date'] = datetime.now().strftime('%Y-%m-%d')
-            kyc_data['kyc_status'] = 'Pending'
-
-            df = pd.read_csv(self.config.KYC_DATA_FILE)
-            
-            if kyc_data.get('customer_id') in df['customer_id'].values:
-                # Update existing record
-                df.loc[df['customer_id'] == kyc_data['customer_id']] = kyc_data
-            else:
+                # Generate new customer ID
+                kyc_data['customer_id'] = self.generate_customer_id()
+                kyc_data['kyc_status'] = 'Pending'
+                
                 # Add new record
                 df = pd.concat([df, pd.DataFrame([kyc_data])], ignore_index=True)
-        
-            print("\n\nDebugging: df :", df.head())
-            df.to_csv(self.config.KYC_DATA_FILE, index=False)
-            return True, f"KYC record saved successfully with Customer ID: {kyc_data['customer_id']}"
+                df.to_csv(self.config.KYC_DATA_FILE, index=False)
+
+                return True, f"New KYC record created with Customer ID: {kyc_data['customer_id']}"
+
         except Exception as e:
+            print(f"Error saving record: {str(e)}")
             return False, f"Error saving KYC record: {str(e)}"
 
 
@@ -378,7 +394,7 @@ class KYCManager:
                     return
 
                 kyc_data = {
-                    'customer_id': customer_id,
+                    'customer_id': customer_id if st.session_state.is_update_mode else None,
                     'kyc_status': kyc_status if customer_id else 'Pending',
                     # Customer
                     'residential_status': residential_status,
@@ -420,8 +436,11 @@ class KYCManager:
                     'payment_method': payment_method
                 }
                 
-                if existing_data:
-                    kyc_data['kyc_status'] = existing_data['kyc_status']
+                # Handle update vs new record
+                if st.session_state.is_update_mode:
+                    print(f"Updating record for customer ID: {customer_id}")
+                    kyc_data['customer_id'] = customer_id  # Ensure customer_id is set for update
+                    kyc_data['kyc_status'] = kyc_status    # Preserve the selected status
                 
                 success, message = self.save_kyc_record(kyc_data)
                 if success:
@@ -429,7 +448,9 @@ class KYCManager:
                     # Reset form state after successful submission
                     st.session_state.show_form = False
                     st.session_state.editing_customer = None
-                    st.rerun()  # This will refresh the page and show the search view
+                    st.session_state.is_update_mode = False
+                    st.session_state.selected_customer_id = None
+                    st.rerun()
                 else:
                     st.error(message)
 
@@ -480,30 +501,43 @@ class KYCManager:
                 st.session_state.show_form = True
         with col2:
             if st.button("Update", key="update_btn"):
-                if customer_id:
-                    df = pd.read_csv(self.config.KYC_DATA_FILE)
-                    customer_data = df[df['customer_id'] == customer_id].iloc[0].to_dict()
-                    st.session_state.editing_customer = customer_data
-                    st.session_state.show_form = True
-                    st.success("Customer data loaded for update")
+                if st.session_state.selected_customer_id:
+                    try:
+                        df = pd.read_csv(self.config.KYC_DATA_FILE)
+                        customer_record = df.loc[df['customer_id'] == st.session_state.selected_customer_id]
+                        if not customer_record.empty:
+                            customer_data = customer_record.squeeze().to_dict()
+                            st.session_state.editing_customer = customer_data
+                            st.session_state.show_form = True
+                            st.session_state.is_update_mode = True  # Set update mode
+                            st.success(f"Customer {st.session_state.selected_customer_id} loaded for update")
+                        else:
+                            st.error("Customer record not found")
+                    except Exception as e:
+                        st.error(f"Error loading customer data: {str(e)}")
                 else:
-                    st.warning("⚠️ Please select a customer to update", icon="⚠️")
+                    st.warning("⚠️ Please select a customer record to update")
+
         with col3:
             if st.button("Generate KYC", key="gen_btn"):
-                if customer_id:
+                if st.session_state.selected_customer_id:
                     df = pd.read_csv(self.config.KYC_DATA_FILE)
-                    customer_data = df[df['customer_id'] == customer_id].to_dict('records')[0]
-                    success, message = self.generate_kyc_application(customer_data)
-                    if success:
-                        st.success(message)
+                    customer_data = df[df['customer_id'] == st.session_state.selected_customer_id].iloc[0].to_dict()
+                    if customer_data['kyc_status'].lower() != 'completed':
+                        st.error("KYC generation is only allowed for completed applications")
                     else:
-                        st.error(message)
+                        success, message = self.generate_kyc_application(customer_data)
+                        if success:
+                            st.success(message)
+                        else:
+                            st.error(message)
                 else:
-                    st.warning("⚠️ Please select a customer first", icon="⚠️")
+                    st.warning("⚠️ Please select a customer record to generate KYC")
         with col4:
-            if st.button("Refresh", key="refresh_btn"):     # Changed from Refresh to Reset
+            if st.button("Reset", key="reset_btn"):     # Changed from Refresh to Reset
                 st.session_state.show_form = False
                 st.session_state.editing_customer = None
+                st.session_state.selected_customer_id = None
                 st.rerun()  # Changed from experimental_rerun to rerun
 
         # Only show search if not showing form
@@ -522,6 +556,19 @@ class KYCManager:
                 results = self.search_records(search_term)
                 if not results.empty:
                     st.markdown("<div class='info-box'>", unsafe_allow_html=True)
+
+                    # Add selection dropdown
+                    customer_options = [f"{row['customer_id']} - {row['full_name']}" for _, row in results.iterrows()]
+                    selected_index = st.selectbox(
+                        "Select a customer record:",
+                        range(len(customer_options)),
+                        format_func=lambda x: customer_options[x]
+                    )
+
+                    # Store selected customer ID
+                    st.session_state.selected_customer_id = results.iloc[selected_index]['customer_id']
+                    
+                    # Display results
                     st.dataframe(results, use_container_width=True)
                     st.markdown("</div>", unsafe_allow_html=True)
     
