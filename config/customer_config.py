@@ -130,3 +130,53 @@ class CustomerConfig:
         # Customer Profile and Payment
         'annual_income', 'investment_purpose', 'source_of_funds', 'payment_method'
     ])
+
+    # Add new configuration for data types
+    KYC_FIELD_TYPES: Dict[str, str] = field(default_factory=lambda: {
+        # System Fields
+        'customer_id': 'str',
+        'kyc_status': 'str',
+        
+        # Map types based on existing KYC_FIELDS structure
+        # Customer
+        'residential_status': 'str',
+        'full_name': 'str',
+        'residential_address_line1': 'str',
+        'residential_address_line2': 'str',
+        'home_address_line1': 'str',
+        'home_address_line2': 'str',
+        'contact_landline': 'str',
+        'contact_office': 'str',
+        'contact_mobile': 'str',
+        
+        # Customer Information
+        'gender': 'str',
+        'nationality': 'str',
+        'date_of_birth': 'str',  # Keep as string for ISO format
+        'place_of_birth': 'str',
+        'passport_number': 'str',
+        'passport_issue_place': 'str',
+        'passport_issue_date': 'str',  # Keep as string for ISO format
+        'passport_expiry_date': 'str',  # Keep as string for ISO format
+        'dual_nationality': 'str',
+        'dual_passport_number': 'str',
+        'dual_passport_issue_date': 'str',  # Keep as string for ISO format
+        'dual_passport_expiry_date': 'str',  # Keep as string for ISO format
+        'emirates_id': 'str',
+        'emirates_id_expiry': 'str',  # Keep as string for ISO format
+        'visa_uid': 'str',
+        'visa_expiry': 'str',  # Keep as string for ISO format
+        
+        # Customer Occupation
+        'occupation': 'str',
+        'sponsor_business_name': 'str',
+        'sponsor_business_address': 'str',
+        'sponsor_business_landline': 'str',
+        'sponsor_business_mobile': 'str',
+        
+        # Customer Profile and Payment
+        'annual_income': 'int',
+        'investment_purpose': 'str',
+        'source_of_funds': 'str',
+        'payment_method': 'str'
+    })

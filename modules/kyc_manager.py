@@ -21,6 +21,11 @@ class KYCManager:
         self.initialize_session_state()
 
 
+    def get_data_types(self) -> Dict[str, str]:
+        """Get data types from config"""
+        return self.config.KYC_FIELD_TYPES
+
+
     # Helper function to safely parse dates
     def parse_date(self, date_str):
         if pd.isna(date_str) or date_str is None:
@@ -39,9 +44,9 @@ class KYCManager:
         
             # Create KYC file with headers if it doesn't exist
             if not os.path.exists(self.config.KYC_DATA_FILE):
-                # Create empty DataFrame with all required columns
-                df = pd.DataFrame(columns=self.config.KYC_CSV_HEADERS)
-            
+                # Create empty DataFrame with correct data types
+                df = pd.DataFrame(columns=self.config.KYC_CSV_HEADERS).astype(self.get_data_types())
+                        
                 # Create directory if it doesn't exist (in case KYC_DATA_FILE includes subdirectories)
                 os.makedirs(os.path.dirname(self.config.KYC_DATA_FILE), exist_ok=True)
             
@@ -51,6 +56,22 @@ class KYCManager:
        
         except Exception as e:
             st.error(f"Error setting up data store: {str(e)}")
+            raise
+
+
+    def read_kyc_data(self) -> pd.DataFrame:
+        """Centralized method to read KYC data with correct types"""
+        try:
+            return pd.read_csv(
+                self.config.KYC_DATA_FILE,
+                dtype=self.get_data_types(),
+                na_values=['nan', 'None', ''],
+                keep_default_na=True
+            )
+        except FileNotFoundError:
+            return pd.DataFrame(columns=self.config.KYC_CSV_HEADERS).astype(self.get_data_types())
+        except Exception as e:
+            logging.error(f"Error reading KYC data: {str(e)}")
             raise
 
 
@@ -84,7 +105,7 @@ class KYCManager:
             print(f"Processing for year: {current_year}")
 
             # Read the CSV file
-            df = pd.read_csv(self.config.KYC_DATA_FILE)
+            df = self.read_kyc_data()
         
             # If file is empty, return first ID
             if df.empty:
@@ -120,7 +141,7 @@ class KYCManager:
     def check_duplicate(self, full_name: str, date_of_birth: str, passport_number: str) -> Tuple[bool, Optional[Dict]]:
         """Check for duplicate records based on name, DOB and passport"""
         try:
-            df = pd.read_csv(self.config.KYC_DATA_FILE)
+            df = self.read_kyc_data()
         
             # Case-insensitive comparison
             mask = (
@@ -142,8 +163,15 @@ class KYCManager:
     def save_kyc_record(self, kyc_data: Dict[str, Any]) -> Tuple[bool, str]:
         """Save KYC record to CSV"""
         try:
-            # Check for duplicates if this is a new record
-            df = pd.read_csv(self.config.KYC_DATA_FILE)
+            # Read with proper types
+            df = self.read_kyc_data()
+
+            print("\n\nDebugging1. Current DataFrame Info:")
+            print(df.info())  # This will show data types and non-null counts
+        
+            print("\n\nDebugging2. Form Data Being Saved:")
+            for key, value in kyc_data.items():
+                print(f"{key}: {type(value)} = {value}")
 
             # Update existing record
             if st.session_state.is_update_mode and kyc_data.get('customer_id'):
@@ -155,8 +183,7 @@ class KYCManager:
                 # Update the existing record
                 print("\n\nDebugging: in save_kyc_record: Update Record : kyc_data : ", kyc_data)
 
-                # df.loc[mask] = kyc_data
-                # OR update column by column
+                # Update each field individually
                 for column in df.columns:
                     if column in kyc_data:
                         df.loc[mask, column] = kyc_data[column]
@@ -200,14 +227,17 @@ class KYCManager:
     def search_records(self, search_term: str) -> pd.DataFrame:
         """Search KYC records"""
         try:
-            df = pd.read_csv(self.config.KYC_DATA_FILE)
+            df = self.read_kyc_data()
+            print("\n\nDebugging3. Search DataFrame Info:")
+            print("\n\nDebugging4:", df.info())
+
             if search_term:
                 mask = df.apply(lambda x: x.astype(str).str.contains(search_term, case=False)).any(axis=1)
                 return df[mask]
             return df
         except Exception as e:
             st.error(f"Search error: {str(e)}")
-            return pd.DataFrame()
+            return pd.DataFrame(columns=self.config.KYC_CSV_HEADERS).astype(self.get_data_types())
 
 
     def render_kyc_form(self, customer_id: Optional[str] = None, existing_data: Optional[Dict] = None):
@@ -536,7 +566,7 @@ class KYCManager:
             if st.button("Update", key="update_btn"):
                 if st.session_state.selected_customer_id:
                     try:
-                        df = pd.read_csv(self.config.KYC_DATA_FILE)
+                        df = self.read_kyc_data()
                         customer_record = df.loc[df['customer_id'] == st.session_state.selected_customer_id]
                         if not customer_record.empty:
                             customer_data = customer_record.squeeze().to_dict()
@@ -554,7 +584,7 @@ class KYCManager:
         with col3:
             if st.button("Generate KYC", key="gen_btn"):
                 if st.session_state.selected_customer_id:
-                    df = pd.read_csv(self.config.KYC_DATA_FILE)
+                    df = self.read_kyc_data()
                     customer_data = df[df['customer_id'] == st.session_state.selected_customer_id].iloc[0].to_dict()
                     if customer_data['kyc_status'].lower() != 'completed':
                         st.error("KYC generation is only allowed for completed applications")
