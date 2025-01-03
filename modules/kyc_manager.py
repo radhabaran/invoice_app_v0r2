@@ -532,6 +532,10 @@ class KYCManager:
                 margin-bottom: 1rem;
                 width: 100%;
             }
+            .info-box .stAlert {
+                width: 100%;
+                margin: 0;
+            }
             </style>
         """, unsafe_allow_html=True)
 
@@ -594,6 +598,11 @@ class KYCManager:
 
             # Message display area - right below the buttons
         if 'message' in st.session_state and st.session_state.message:
+            st.markdown("""
+                <div class="info-box" style="margin-top: 1rem;">
+                    <div style="display: flex; align-items: center; justify-content: center;">
+            """, unsafe_allow_html=True)
+
             msg_type, msg_text = st.session_state.message
             if msg_type == "success":
                 st.success(msg_text)
@@ -601,6 +610,8 @@ class KYCManager:
                 st.error(msg_text)
             elif msg_type == "warning":
                 st.warning(msg_text)
+
+            st.markdown("</div></div>", unsafe_allow_html=True)
             # Clear message after displaying
             st.session_state.message = None
 
@@ -702,30 +713,71 @@ class KYCManager:
             canvas.setFillColorRGB(0.9, 0.95, 1.0)
             canvas.rect(40, y-20, 515, 20, fill=1)
             canvas.setFillColorRGB(1, 0, 0)
-    
+
         canvas.setFont('Helvetica-Bold', 11)
         canvas.drawCentredString(297, y-15, section)
         canvas.setFillColorRGB(0, 0, 0)
-        
+    
         y -= 20
         canvas.setFont('Helvetica', 10)
+
+        is_merged_cell_active = False
     
         # Draw fields with continuous grid
         for label, key in self.pdf_config.PDF_FIELDS.get(section, []):
-            canvas.rect(40, y-20, 210, 20)  # Label box
-            canvas.rect(250, y-20, 305, 20)  # Value box
+            if label in ["Residential Address", "Home Address"] and not is_merged_cell_active:
+                # First row: Draw merged label cell and first value
+                is_merged_cell_active = True
             
-            canvas.drawString(45, y-15, label)
-            value = str(data.get(key, ''))
-            if isinstance(value, str) and key.endswith(('_date', 'Date')):
-                try:
-                    value = datetime.strptime(value, '%Y-%m-%d').strftime('%d-%m-%Y')
-                except:
-                    pass
-            if not pd.isna(value) and value.lower() != 'nan':
-                canvas.drawString(255, y-15, value)
-            y -= 20
-        
+                # Draw merged label cell
+                canvas.rect(40, y-40, 210, 40)  # Merged cell for label
+                y_centered = y - 25  # Center position for the merged cell
+
+                canvas.setFont('Helvetica-Bold', 9)
+                canvas.drawString(45, y_centered, label)
+            
+                # Draw first value cell
+                canvas.rect(250, y-20, 305, 20)
+                canvas.setFont('Helvetica', 9)
+                value = str(data.get(key, '')) 
+                if not pd.isna(value) and value.lower() != 'nan':
+                    canvas.drawString(255, y-15, value)
+            
+                y -= 20  # Move to next line position
+            
+            elif is_merged_cell_active:
+                # Second row: Skip label but draw second value
+                is_merged_cell_active = False
+            
+                # Draw only second value cell
+                canvas.rect(250, y-20, 305, 20)
+                canvas.setFont('Helvetica', 9)
+                value = str(data.get(key, '')) 
+                if not pd.isna(value) and value.lower() != 'nan':
+                    canvas.drawString(255, y-15, value)
+            
+                y -= 20  # Move to next line position
+            
+            else:
+                # Normal field handling
+                canvas.rect(40, y-20, 210, 20)  # Label box
+                canvas.rect(250, y-20, 305, 20)  # Value box
+            
+                canvas.setFont('Helvetica-Bold', 9)
+                canvas.drawString(45, y-15, label)
+
+                canvas.setFont('Helvetica', 9)
+                value = str(data.get(key, ''))
+                if isinstance(value, str) and key.endswith(('_date', 'Date')):
+                    try:
+                        value = datetime.strptime(value, '%Y-%m-%d').strftime('%d-%m-%Y')
+                    except:
+                        pass
+                if not pd.isna(value) and value.lower() != 'nan':
+                    canvas.drawString(255, y-15, value)
+            
+                y -= 20
+    
         return y
 
 
@@ -735,7 +787,7 @@ class KYCManager:
         canvas.setFillColorRGB(0.9, 0.95, 1.0)
         canvas.rect(40, y-20, 515, 20, fill=1)
         canvas.setFillColorRGB(1, 0, 0)
-        canvas.setFont('Helvetica-Bold', 12)
+        canvas.setFont('Helvetica-Bold', 11)
         canvas.drawCentredString(297, y-15, section)
         
         y -= 25
@@ -756,7 +808,10 @@ class KYCManager:
             canvas.line(40, y-20, 555, y-20)
             
             # Left column
+            canvas.setFont('Helvetica-Bold', 9)
             canvas.drawString(45, y-15, fields[i][0])
+
+            canvas.setFont('Helvetica', 9)
             value = str(data.get(fields[i][1], ''))
             if isinstance(value, str) and fields[i][1].endswith(('_date', 'Date')):
                 try:
@@ -768,7 +823,10 @@ class KYCManager:
             
             # Right column
             if i+1 < len(fields):
+                canvas.setFont('Helvetica-Bold', 9)
                 canvas.drawString(302, y-15, fields[i+1][0])
+
+                canvas.setFont('Helvetica', 9)
                 value = str(data.get(fields[i+1][1], ''))
                 if isinstance(value, str) and fields[i+1][1].endswith(('_date', 'Date')):
                     try:
@@ -795,7 +853,7 @@ class KYCManager:
         
         y -= 20
         canvas.setFillColorRGB(0, 0, 0)
-        canvas.setFont('Helvetica', 10)
+        canvas.setFont('Helvetica', 9)
         
         # Declaration text box with word wrapping
         declaration_text = self.pdf_config.DECLARATION_TEXT
@@ -840,7 +898,9 @@ class KYCManager:
         for label, value in signature_fields:
             canvas.rect(40, y-20, 210, 20)  # Label box
             canvas.rect(250, y-20, 305, 20)  # Value box
+            canvas.setFont('Helvetica-Bold', 9)
             canvas.drawString(45, y-15, label)
+            canvas.setFont('Helvetica', 9)
             canvas.drawString(255, y-15, value)
             y -= 20
         
