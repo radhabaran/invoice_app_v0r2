@@ -583,9 +583,10 @@ class KYCManager:
                     else:
                         success, message = self.generate_kyc_application(customer_data)
                         if success:
-                            st.success(message)
+                            # st.success(message)
+                            st.session_state.message = ("success", message)
                         else:
-                            st.error(message)
+                            st.session_state.message = ("error", message)
                 else:
                     st.session_state.message = ("warning", "⚠️ Please select a customer record to generate KYC")
         with col4:
@@ -598,22 +599,36 @@ class KYCManager:
 
             # Message display area - right below the buttons
         if 'message' in st.session_state and st.session_state.message:
-            st.markdown("""
-                <div class="info-box" style="margin-top: 1rem;">
-                    <div style="display: flex; align-items: center; justify-content: center;">
+            msg_type, msg_text = st.session_state.message
+            print("\n\nDebugging : msg_text :", msg_text)
+            
+            # Create a dedicated message container with custom styling
+            message_styles = {
+                "success": "background-color: #D4EDDA; color: #155724; border: 1px solid #C3E6CB;",
+                "error": "background-color: #F8D7DA; color: #721C24; border: 1px solid #F5C6CB;",
+                "warning": "background-color: #FFF3CD; color: #856404; border: 1px solid #FFEEBA;",
+                "info": "background-color: #E2E3E5; color: #383D41; border: 1px solid #D6D8DB;"  # Default style for unknown types
+            }
+            
+            # Default to info style for unknown message types
+            style = message_styles.get(msg_type, message_styles["info"])
+
+            st.markdown(f"""
+                <div style="
+                    padding: 1rem; 
+                    border-radius: 0.5rem; 
+                    margin: 1rem 0; 
+                    text-align: center;
+                    {style}">
+                    {msg_text}
+                </div>
             """, unsafe_allow_html=True)
 
-            msg_type, msg_text = st.session_state.message
-            if msg_type == "success":
-                st.success(msg_text)
-            elif msg_type == "error":
-                st.error(msg_text)
-            elif msg_type == "warning":
-                st.warning(msg_text)
-
-            st.markdown("</div></div>", unsafe_allow_html=True)
             # Clear message after displaying
             st.session_state.message = None
+
+        # Add spacing after message
+        st.markdown("<br>", unsafe_allow_html=True)
 
         # Only show search if not showing form
         if not st.session_state.show_form:
